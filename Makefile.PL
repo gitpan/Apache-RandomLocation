@@ -4,4 +4,9 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'	=> 'Apache::RandomLocation',
     'VERSION_FROM' => 'RandomLocation.pm', # finds $VERSION
+    'dist' => { COMPRESS => 'gzip', SUFFIX => 'gz' },
+    'PREREQ_PM' => { 
+	'Apache::Constants' => '1.00',
+	'CGI' => '2.38',
+     },
 );
