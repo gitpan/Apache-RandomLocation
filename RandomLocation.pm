@@ -5,15 +5,16 @@ use vars qw($VERSION);
 
 use Apache::Constants qw(OK DECLINED REDIRECT SERVER_ERROR);
 use CGI qw(:html2 start_form end_form submit param popup_menu);
-$VERSION = '0.02';
+$VERSION = '0.5';
 
 sub handler {
   my ($r) = shift;
 
 # determine the type requested and path information, if applicable
 # $mirror will uniquely identify the <Location> directive
-  my $uri = $r->path_info;
-  my ($mirror, $request) = $uri =~ m!^/([^/]+)(.*)!;
+  my $mirror = $r->location;
+  my $uri = $r->uri;
+  (my $request = $uri) =~ s!$mirror(.*)!$1!;
 
 # get ConfigFile, Type, and BaseUrl variables from PerlSetVar
   my ($configfile, $type, $site_info);
@@ -26,6 +27,12 @@ sub handler {
   }
 
   $configfile = $r->dir_config('ConfigFile') || '';
+  if ($configfile =~ m!^~!) {
+    (my $home = $request) =~ s!(.*)/[^/]+!$1!;
+    my $home_dir = $r->lookup_uri($home)->filename;
+    $configfile =~ s!^~!$home_dir!;
+    $mirror = $uri;
+  }
   if ( ($type eq "mirror") and (!$configfile) ) {
     $r->log_error("A configuration file must be specified for Type mirror");
     return SERVER_ERROR;
@@ -38,7 +45,13 @@ sub handler {
   # points to a directory on the local server
   my $local_server = $r->server->server_hostname;
   my $dir;
-  if ($baseurl !~ m!^http://!) {
+  if ($baseurl =~ m!^~!) {
+    (my $home = $request) =~ s!(.*)/[^/]+!$1!;
+    $baseurl =~ s!^~!$home!;
+    $dir = $r->lookup_uri($baseurl)->filename;
+    $mirror = $uri;
+  }
+  elsif ($baseurl !~ m!^http://!) {
     $dir = $r->lookup_uri($baseurl)->filename;
   }
   elsif ($baseurl =~ m!^http://$local_server!) {
@@ -455,7 +468,23 @@ mirror. The ftp:// protocol is assumed for all sites except www.perl.com,
 where http:// is used. For the purpose of matching the country code of the
 client with that of the mirrors, ftp.utilis.com is to be considered as 
 having the country code of "ca".
-   
+
+If a LocationMatch directive is given as, for example,
+
+  <LocationMatch "/(physics|chemistry|biology)/random-image">
+    SetHandler perl-script
+    PerlSetVar BaseURL ~/images/
+    PerlSetVar ConfigFile ~/images/config.txt
+    PerlHandler Apache::RandomLocation
+  </LocationMatch>
+
+then the tilde character will be interpreted as the corresponding
+home directory (relative to I<DocumentRoot>). For example, with
+I<DocumentRoot> equal to I</usr/local/apache/htdocs>, a request
+to I</biology/random-image> will use a I<BaseURL> of
+I</usr/local/apache/htdocs/biology/images/> and a I<ConfigFile> of
+</usr/local/apache/htdocs/biology/images/config.txt>.
+
 
 =head1 AUTHORS
 
